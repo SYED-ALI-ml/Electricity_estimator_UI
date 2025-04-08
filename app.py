@@ -44,6 +44,67 @@ def load_model():
             lstm_model = None
     return lstm_model
 
+def generate_graphs():
+    """Generate visualization plots for the dashboard"""
+    try:
+        if df is None or df.empty:
+            return None
+
+        # 1. Time Series Plot
+        time_series = go.Figure()
+        time_series.add_trace(go.Scatter(
+            x=df['Datetime'].tolist(),
+            y=df['total_power'].tolist(),
+            mode='lines',
+            name='Historical Consumption'
+        ))
+        time_series.update_layout(
+            title='Historical Power Consumption',
+            xaxis_title='Time',
+            yaxis_title='Power Consumption (kW)',
+            height=400
+        )
+
+        # 2. Temperature vs Consumption
+        temp_vs_consumption = go.Figure()
+        temp_vs_consumption.add_trace(go.Scatter(
+            x=df['Temperature'].tolist(),
+            y=df['total_power'].tolist(),
+            mode='markers',
+            name='Temperature vs Consumption'
+        ))
+        temp_vs_consumption.update_layout(
+            title='Temperature vs Power Consumption',
+            xaxis_title='Temperature (°C)',
+            yaxis_title='Power Consumption (kW)',
+            height=300
+        )
+
+        # 3. Hourly Pattern
+        df['hour'] = pd.to_datetime(df['Datetime']).dt.hour
+        hourly_pattern = go.Figure()
+        hourly_pattern.add_trace(go.Box(
+            x=df['hour'].tolist(),
+            y=df['total_power'].tolist(),
+            name='Hourly Distribution'
+        ))
+        hourly_pattern.update_layout(
+            title='Hourly Consumption Distribution',
+            xaxis_title='Hour of Day',
+            yaxis_title='Power Consumption (kW)',
+            height=300
+        )
+
+        # Convert figures to JSON-serializable format
+        return {
+            'time_series': json.loads(time_series.to_json()),
+            'temp_vs_consumption': json.loads(temp_vs_consumption.to_json()),
+            'hourly_pattern': json.loads(hourly_pattern.to_json())
+        }
+    except Exception as e:
+        print(f"Error generating graphs: {e}")
+        return None
+
 @app.route('/')
 def home():
     return render_template('index.html')
@@ -51,109 +112,48 @@ def home():
 @app.route('/estimate', methods=['POST'])
 def estimate():
     try:
-        # Load data and model only when needed
+        # Load data and model
         global df, lstm_model
         df = load_data()
         lstm_model = load_model()
         
+        if lstm_model is None:
+            return jsonify({'error': 'Model not available'}), 500
+
         data = request.get_json()
-        
-        # Extract input parameters
-        time_of_day = data.get('time_of_day')
-        temperature = float(data.get('temperature', 20))  # Default to 20°C if not provided
-        
-        # Convert time string to datetime
-        current_time = datetime.strptime(time_of_day, '%H:%M')
-        
-        # If we have a trained LSTM model, use it for prediction
-        if lstm_model is not None and lstm_model.is_fitted:
-            # Make prediction using LSTM model
-            predictions = lstm_model.predict(current_time, temperature)
-            
-            # Sum up the predictions for all zones
-            estimated_consumption = float(sum(predictions) / 1000)  # Convert to kW and to float
-            
-            # Create graphs
-            # 1. Time Series Plot
-            time_series = go.Figure()
-            time_series.add_trace(go.Scatter(
-                x=df['Datetime'].tolist(),
-                y=df['total_power'].tolist(),
-                mode='lines',
-                name='Historical Consumption'
-            ))
-            time_series.update_layout(
-                title='Historical Power Consumption',
-                xaxis_title='Time',
-                yaxis_title='Power Consumption (kW)'
-            )
-            
-            # 2. Temperature vs Consumption
-            temp_vs_consumption = go.Figure()
-            temp_vs_consumption.add_trace(go.Scatter(
-                x=df['Temperature'].tolist(),
-                y=df['total_power'].tolist(),
-                mode='markers',
-                name='Temperature vs Consumption'
-            ))
-            temp_vs_consumption.update_layout(
-                title='Temperature vs Power Consumption',
-                xaxis_title='Temperature (°C)',
-                yaxis_title='Power Consumption (kW)'
-            )
-            
-            # 3. Hourly Pattern
-            df['hour'] = pd.to_datetime(df['Datetime']).dt.hour
-            hourly_pattern = go.Figure()
-            hourly_pattern.add_trace(go.Box(
-                x=df['hour'].tolist(),
-                y=df['total_power'].tolist(),
-                name='Hourly Distribution'
-            ))
-            hourly_pattern.update_layout(
-                title='Hourly Consumption Distribution',
-                xaxis_title='Hour of Day',
-                yaxis_title='Power Consumption (kW)'
-            )
-            
-            # Convert figures to JSON-serializable format
-            graphs = {
-                'time_series': json.loads(time_series.to_json()),
-                'temp_vs_consumption': json.loads(temp_vs_consumption.to_json()),
-                'hourly_pattern': json.loads(hourly_pattern.to_json())
-            }
-            
-        else:
-            # Fallback to basic estimation if model is not available
-            if 8 <= current_time.hour <= 18:
-                base_consumption = 1200  # kW
-            else:
-                base_consumption = 800  # kW
-            
-            temp_factor = 1 + (temperature - 20) * 0.02
-            estimated_consumption = base_consumption * temp_factor
-            graphs = None
+        time_str = data.get('time')
+        temperature = data.get('temperature')
+
+        if not time_str:
+            return jsonify({'error': 'Time is required'}), 400
+
+        # Parse the time string
+        try:
+            time = datetime.strptime(time_str, '%H:%M:%S').time()
+        except ValueError:
+            return jsonify({'error': 'Invalid time format. Expected HH:MM:SS'}), 400
+
+        if temperature is None:
+            return jsonify({'error': 'Temperature is required'}), 400
+
+        # Get the prediction using the loaded model
+        prediction = lstm_model.predict(time, temperature)
         
         # Calculate cost (assuming $0.12 per kWh)
-        rate_per_kwh = 0.12
-        estimated_cost = float(estimated_consumption * rate_per_kwh)  # Convert to float
-        
+        cost = prediction * 0.12
+
+        # Generate graphs
+        graphs = generate_graphs()
+
         return jsonify({
-            'success': True,
-            'time_of_day': time_of_day,
-            'temperature': float(temperature),
-            'estimated_consumption': round(float(estimated_consumption), 2),
-            'estimated_cost': round(float(estimated_cost), 2),
-            'units': 'kW',
+            'estimated_consumption': float(prediction),
+            'estimated_cost': float(cost),
             'graphs': graphs
         })
-        
+
     except Exception as e:
         print(f"Error in estimate route: {str(e)}")
-        return jsonify({
-            'success': False,
-            'error': str(e)
-        }), 400
+        return jsonify({'error': str(e)}), 500
 
 if __name__ == '__main__':
     # Get port from environment variable or default to 10000

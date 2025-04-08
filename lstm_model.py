@@ -110,41 +110,58 @@ class PowerConsumptionLSTM:
             print(f"Error loading model: {str(e)}")
             return False
     
-    def predict(self, time_of_day, temperature):
+    def predict(self, time, temperature):
+        """
+        Make a prediction for a given time and temperature
+        
+        Args:
+            time (datetime.time): Time of day
+            temperature (float): Temperature in Celsius
+            
+        Returns:
+            float: Predicted power consumption in kW
+        """
         try:
-            if not self.is_fitted:
-                raise ValueError("Scaler has not been fitted. Please train the model first.")
-            
+            if not self.is_fitted or self.model is None:
+                print("Model not properly loaded")
+                return 0.0
+
             # Create a sample input with default values
-            sample = np.zeros((1, len(self.feature_names)))  # One sample with all features
+            sample = np.zeros((1, len(self.feature_names)))
             
-            # Fill in known values
-            sample[0, 0] = temperature  # Temperature is the first feature
-            # Set other features to mean values (this is a simplification)
-            sample[0, 1] = 75.0  # Average humidity
-            sample[0, 2] = 5.0   # Average wind speed
-            sample[0, 3] = 100.0 # Average general diffuse flows
-            sample[0, 4] = 100.0 # Average diffuse flows
+            # Set known values
+            sample[0, 0] = temperature  # Temperature
             
-            # Scale the input
-            scaled_sample = self.scaler.transform(sample)
+            # Set other features to reasonable default values
+            sample[0, 1] = 75.0  # Humidity (average value)
+            sample[0, 2] = 5.0   # WindSpeed (average value)
+            sample[0, 3] = 100.0 # GeneralDiffuseFlows (average value)
+            sample[0, 4] = 100.0 # DiffuseFlows (average value)
             
-            # Create sequence by repeating the scaled sample
-            sequence = np.tile(scaled_sample[:, :-3], (1, self.sequence_length, 1))
+            # Scale the features
+            scaled_features = self.scaler.transform(sample)
+            
+            # Create sequence by repeating the scaled features
+            sequence = np.tile(scaled_features[:, :-3], (1, self.sequence_length, 1))
             
             # Make prediction
-            prediction = self.model.predict(sequence, verbose=0)
+            predictions = self.model.predict(sequence, verbose=0)
             
-            # Inverse transform the prediction
+            # Create dummy array for inverse transform
             dummy = np.zeros((1, len(self.feature_names)))
-            dummy[0, -3:] = prediction[0]  # Put prediction in the last 3 columns
-            prediction = self.scaler.inverse_transform(dummy)[0, -3:]
+            dummy[0, -3:] = predictions[0]  # Last 3 columns are power consumption predictions
             
-            return prediction
+            # Inverse transform to get actual values
+            result = self.scaler.inverse_transform(dummy)[0, -3:]  # Get power consumption values
+            
+            # Sum up the predictions for all zones and convert to kW
+            total_power = float(np.sum(result)) / 1000.0  # Convert to kW
+            
+            return total_power
             
         except Exception as e:
-            print(f"Error during prediction: {str(e)}")
-            raise
+            print(f"Error in prediction: {str(e)}")
+            return 0.0  # Return 0 as fallback
     
     def cleanup(self):
         """Clean up resources"""

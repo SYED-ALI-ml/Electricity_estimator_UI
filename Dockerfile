@@ -14,4 +14,5 @@ COPY . .
 
 EXPOSE 10000
 
-CMD ["gunicorn", "--bind", "0.0.0.0:10000", "app:app"] 
+# Use 2 workers, increase timeout, and use gthread worker class for better handling of ML models
+CMD ["gunicorn", "--bind", "0.0.0.0:10000", "--workers", "1", "--timeout", "120", "--worker-class", "gthread", "--threads", "4", "app:app"] 
