@@ -2,7 +2,7 @@ import os
 from flask import Flask, render_template, request, jsonify
 import pandas as pd
 import numpy as np
-from datetime import datetime, timedelta
+from datetime import datetime
 from lstm_model import PowerConsumptionLSTM
 import plotly.graph_objects as go
 import plotly.express as px
@@ -16,18 +16,18 @@ try:
     # Calculate total power consumption
     df['total_power'] = df['PowerConsumption_Zone1'] + df['PowerConsumption_Zone2'] + df['PowerConsumption_Zone3']
     
-    # Initialize LSTM model
+    # Initialize LSTM model and load pre-trained model
     lstm_model = PowerConsumptionLSTM()
+    model_loaded = lstm_model.load_model('models/power_consumption_lstm.h5')
     
-    # Train the model if it doesn't exist or if scalers aren't fitted
-    if not lstm_model.load_model() or not lstm_model.is_fitted:
-        print("Training LSTM model (optimized for speed)...")
-        lstm_model.train(df, epochs=20)  # Reduced epochs
+    if not model_loaded:
+        print("Error: Could not load pre-trained model")
+        lstm_model = None
     else:
-        print("Loaded existing LSTM model")
+        print("Successfully loaded pre-trained model")
         
 except Exception as e:
-    print(f"Error loading data or training model: {e}")
+    print(f"Error loading data or model: {e}")
     df = pd.DataFrame()
     lstm_model = None
 

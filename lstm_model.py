@@ -6,6 +6,7 @@ from tensorflow.keras.layers import LSTM, Dense, Dropout
 from tensorflow.keras.callbacks import EarlyStopping
 import os
 import gc
+import joblib
 
 class PowerConsumptionLSTM:
     def __init__(self, sequence_length=12):
@@ -15,8 +16,6 @@ class PowerConsumptionLSTM:
         self.feature_names = ['Temperature', 'Humidity', 'WindSpeed', 'GeneralDiffuseFlows', 'DiffuseFlows', 
                             'PowerConsumption_Zone1', 'PowerConsumption_Zone2', 'PowerConsumption_Zone3']
         self.is_fitted = False
-        self.model_path = 'power_consumption_lstm.h5'
-        self.scaler_path = 'scaler_params.npz'
         
     def create_sequences(self, data):
         X, y = [], []
@@ -32,7 +31,7 @@ class PowerConsumptionLSTM:
             Dense(32, activation='relu'),
             Dense(3)  # Output layer for 3 zones
         ])
-        model.compile(optimizer='adam', loss='mse')
+        model.compile(optimizer='adam', loss='mean_squared_error')  # Using full name instead of 'mse'
         return model
     
     def prepare_data(self, df):
@@ -47,13 +46,6 @@ class PowerConsumptionLSTM:
         if not self.is_fitted:
             self.scaler.fit(features)
             self.is_fitted = True
-            # Save scaler parameters
-            np.savez(self.scaler_path, 
-                    scale_=self.scaler.scale_,
-                    min_=self.scaler.min_,
-                    data_min_=self.scaler.data_min_,
-                    data_max_=self.scaler.data_max_,
-                    data_range_=self.scaler.data_range_)
         
         # Transform features
         scaled_features = self.scaler.transform(features)
@@ -82,29 +74,37 @@ class PowerConsumptionLSTM:
                 verbose=1
             )
             
-            # Save the model
-            self.model.save(self.model_path)
-            
             return history
             
         except Exception as e:
             print(f"Error during training: {str(e)}")
             raise
     
-    def load_model(self):
+    def save_model(self, model_path):
+        """Save both the Keras model and the scaler"""
+        # Create directory if it doesn't exist
+        os.makedirs(os.path.dirname(model_path), exist_ok=True)
+        
+        # Save Keras model
+        self.model.save(model_path)
+        
+        # Save scaler
+        scaler_path = os.path.join(os.path.dirname(model_path), 'scaler.save')
+        joblib.dump(self.scaler, scaler_path)
+    
+    def load_model(self, model_path):
+        """Load both the Keras model and the scaler"""
         try:
-            if os.path.exists(self.model_path):
-                self.model = load_model(self.model_path)
-                # Load scaler parameters
-                if os.path.exists(self.scaler_path):
-                    scaler_params = np.load(self.scaler_path)
-                    self.scaler.scale_ = scaler_params['scale_']
-                    self.scaler.min_ = scaler_params['min_']
-                    self.scaler.data_min_ = scaler_params['data_min_']
-                    self.scaler.data_max_ = scaler_params['data_max_']
-                    self.scaler.data_range_ = scaler_params['data_range_']
+            # Load Keras model
+            if os.path.exists(model_path):
+                self.model = load_model(model_path)
+                
+                # Load scaler
+                scaler_path = os.path.join(os.path.dirname(model_path), 'scaler.save')
+                if os.path.exists(scaler_path):
+                    self.scaler = joblib.load(scaler_path)
                     self.is_fitted = True
-                return True
+                    return True
             return False
         except Exception as e:
             print(f"Error loading model: {str(e)}")
