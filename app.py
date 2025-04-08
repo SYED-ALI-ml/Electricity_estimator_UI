@@ -1,9 +1,9 @@
+import os
 from flask import Flask, render_template, request, jsonify
 import pandas as pd
 import numpy as np
 from datetime import datetime, timedelta
 from lstm_model import PowerConsumptionLSTM
-import os
 import plotly.graph_objects as go
 import plotly.express as px
 import json
@@ -59,8 +59,8 @@ def estimate():
             # 1. Time Series Plot
             time_series = go.Figure()
             time_series.add_trace(go.Scatter(
-                x=df['Datetime'].tolist(),  # Convert to list
-                y=df['total_power'].tolist(),  # Convert to list
+                x=df['Datetime'].tolist(),
+                y=df['total_power'].tolist(),
                 mode='lines',
                 name='Historical Consumption'
             ))
@@ -73,8 +73,8 @@ def estimate():
             # 2. Temperature vs Consumption
             temp_vs_consumption = go.Figure()
             temp_vs_consumption.add_trace(go.Scatter(
-                x=df['Temperature'].tolist(),  # Convert to list
-                y=df['total_power'].tolist(),  # Convert to list
+                x=df['Temperature'].tolist(),
+                y=df['total_power'].tolist(),
                 mode='markers',
                 name='Temperature vs Consumption'
             ))
@@ -88,8 +88,8 @@ def estimate():
             df['hour'] = pd.to_datetime(df['Datetime']).dt.hour
             hourly_pattern = go.Figure()
             hourly_pattern.add_trace(go.Box(
-                x=df['hour'].tolist(),  # Convert to list
-                y=df['total_power'].tolist(),  # Convert to list
+                x=df['hour'].tolist(),
+                y=df['total_power'].tolist(),
                 name='Hourly Distribution'
             ))
             hourly_pattern.update_layout(
@@ -123,19 +123,21 @@ def estimate():
         return jsonify({
             'success': True,
             'time_of_day': time_of_day,
-            'temperature': float(temperature),  # Convert to float
-            'estimated_consumption': round(float(estimated_consumption), 2),  # Convert to float
-            'estimated_cost': round(float(estimated_cost), 2),  # Convert to float
+            'temperature': float(temperature),
+            'estimated_consumption': round(float(estimated_consumption), 2),
+            'estimated_cost': round(float(estimated_cost), 2),
             'units': 'kW',
             'graphs': graphs
         })
         
     except Exception as e:
-        print(f"Error in estimate route: {str(e)}")  # Add debug print
+        print(f"Error in estimate route: {str(e)}")
         return jsonify({
             'success': False,
             'error': str(e)
         }), 400
 
 if __name__ == '__main__':
-    app.run(debug=True, port=5001)  # Changed port to 5001 
+    # Get port from environment variable or default to 10000
+    port = int(os.environ.get('PORT', 10000))
+    app.run(host='0.0.0.0', port=port) 
