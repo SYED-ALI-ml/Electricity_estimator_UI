@@ -10,26 +10,39 @@ import json
 
 app = Flask(__name__)
 
-# Load the power consumption data and initialize model
-try:
-    df = pd.read_csv('powerconsumption.csv')
-    # Calculate total power consumption
-    df['total_power'] = df['PowerConsumption_Zone1'] + df['PowerConsumption_Zone2'] + df['PowerConsumption_Zone3']
-    
-    # Initialize LSTM model and load pre-trained model
-    lstm_model = PowerConsumptionLSTM()
-    model_loaded = lstm_model.load_model('models/power_consumption_lstm.h5')
-    
+# Global variables
+df = None
+lstm_model = None
+model_loaded = False
+
+def load_data():
+    """Load the data if not already loaded"""
+    global df
+    if df is None:
+        try:
+            df = pd.read_csv('powerconsumption.csv')
+            df['total_power'] = df['PowerConsumption_Zone1'] + df['PowerConsumption_Zone2'] + df['PowerConsumption_Zone3']
+        except Exception as e:
+            print(f"Error loading data: {e}")
+            df = pd.DataFrame()
+    return df
+
+def load_model():
+    """Load the model if not already loaded"""
+    global lstm_model, model_loaded
     if not model_loaded:
-        print("Error: Could not load pre-trained model")
-        lstm_model = None
-    else:
-        print("Successfully loaded pre-trained model")
-        
-except Exception as e:
-    print(f"Error loading data or model: {e}")
-    df = pd.DataFrame()
-    lstm_model = None
+        try:
+            lstm_model = PowerConsumptionLSTM()
+            if lstm_model.load_model('models/power_consumption_lstm.h5'):
+                model_loaded = True
+                print("Successfully loaded pre-trained model")
+            else:
+                print("Error: Could not load pre-trained model")
+                lstm_model = None
+        except Exception as e:
+            print(f"Error loading model: {e}")
+            lstm_model = None
+    return lstm_model
 
 @app.route('/')
 def home():
@@ -38,6 +51,11 @@ def home():
 @app.route('/estimate', methods=['POST'])
 def estimate():
     try:
+        # Load data and model only when needed
+        global df, lstm_model
+        df = load_data()
+        lstm_model = load_model()
+        
         data = request.get_json()
         
         # Extract input parameters
