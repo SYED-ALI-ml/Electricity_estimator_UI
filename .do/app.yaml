@@ -1,0 +1,13 @@
+name: electricity-estimator
+services:
+- name: web
+  github:
+    branch: main
+    deploy_on_push: true
+  build_command: pip install -r requirements.txt
+  run_command: gunicorn app:app
+  environment_slug: python
+  instance_size_slug: basic-xxs
+  instance_count: 1
+  routes:
+  - path: / 
